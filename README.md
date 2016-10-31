@@ -14,8 +14,11 @@ The controls don't behave very nice in some cases of window resizing.
 
 
 
+
 #TODO:
 
 
-
+-
 Make the program run multi-threaded. For now if you choose to generate a password with the length of 10000 character the program will freeze until the process is done.
+
+-Use the RNGCryptoServiceProvider class to generate the password
