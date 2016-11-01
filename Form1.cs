@@ -19,6 +19,7 @@ namespace PassWordGenerator
     public partial class Form1 : Form
     {
         private bool advancedOptionsActivated;
+        static private bool lettersChecked, digitsChecked, symbolsChecked;
         public Form1()
         {
             InitializeComponent();
@@ -34,7 +35,7 @@ namespace PassWordGenerator
             int test;
             return int.TryParse(input, out test);
         }
-        private string generateCharacter()
+        public string generateCharacter(bool includeLetters, bool includeDigits, bool includeSymbols)
         {
 
             List<string> symbols = new List<string>() { "~", "@", "#", "$", "%", "^", "&", "*", "(", ")", "[", "]", "!", "?", "+", "_", "=", "-", "/", "\\" };
@@ -42,9 +43,9 @@ namespace PassWordGenerator
             List<string> letters = new List<string>() { "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" };
             Random rand = new Random();
             List<int> typesLists = new List<int>();
-            if (checkedListBox1.GetItemChecked(0) == true) typesLists.Add(1);
-            if (checkedListBox1.GetItemChecked(1) == true) typesLists.Add(2);
-            if (checkedListBox1.GetItemChecked(2) == true) typesLists.Add(3);
+            if (includeLetters) typesLists.Add(1);
+            if (includeDigits) typesLists.Add(2);
+            if (includeSymbols) typesLists.Add(3);
             int listsIndex = rand.Next(0, typesLists.Count());
             string character;
             if (typesLists.ElementAt(listsIndex) == 1)
@@ -66,8 +67,8 @@ namespace PassWordGenerator
             }
 
             else return "0"; //this should never happen
-        }
 
+        }
 
         private int passwordValidity()
         {
@@ -82,6 +83,12 @@ namespace PassWordGenerator
             }
             else
             {
+                if (checkedListBox1.GetItemChecked(0) == true) lettersChecked = true;
+                else lettersChecked = false;
+                if (checkedListBox1.GetItemChecked(1) == true) digitsChecked = true;
+                else digitsChecked = false;
+                if (checkedListBox1.GetItemChecked(2) == true) symbolsChecked = true;
+                else symbolsChecked = false;
                 int ValidPasswordLength = Convert.ToInt32(inputPasswordLength);
                 if (checkedListBox1.CheckedItems.Count == 0)
                 {
@@ -92,45 +99,76 @@ namespace PassWordGenerator
                 else return ValidPasswordLength;
             }
         }
-
-
-        private void  Generate_Click(object sender, EventArgs e)
-        {
-           
-             GeneratingPassword();
-        }
-
-        private void GeneratingPassword()
-        {
+        private async void Generate_Click(object sender, EventArgs e)
+        {   
             if (this.advancedOptionsActivated == false)
             {
-               this.checkedListBox1.SetItemChecked(0, true);
+                this.checkedListBox1.SetItemChecked(0, true);
                 this.checkedListBox1.SetItemChecked(1, true);
-                this.checkedListBox1.SetItemChecked(2, true);
+                this.checkedListBox1.SetItemChecked(2, false);
                 this.inputLengthValue.Text = "10";
             }
             int passLength = this.passwordValidity();
             if (passLength > 0)
             {
+
                 this.GeneratedPassword.Text = "";
                 this.charTypeError.Visible = false;
                 this.lengthError.Visible = false;
-    
-                for (int charIndex = 1; charIndex <= passLength; charIndex++)
-                {
+                checkedListBox1.Enabled = false;
+                Generate.Enabled = false;
+                Task<string> task = GeneratingPassword(passLength);
 
-                    string currentChar = generateCharacter();
-                    while (GeneratedPassword.Text.EndsWith(currentChar))
-                    {
-                        currentChar = generateCharacter();
-                    }
-                    GeneratedPassword.Text = GeneratedPassword.Text + currentChar;
-                    this.progressBar1.Value = charIndex * 100 / passLength;
-                }
-            
+                this.GeneratedPassword.Text = await task;
+                if (task.IsCompleted) { checkedListBox1.Enabled = true; Generate.Enabled = true; }
+
             }
-            this.progressBar1.Value = 0;
         }
+
+        private Task<string> GeneratingPassword(int passLength)
+        {
+            return Task.Run(() =>
+        {
+            string result = "";
+            for (int charIndex = 1; charIndex <= passLength; charIndex++)
+            {
+                string currentChar = generateCharacter(lettersChecked, digitsChecked, symbolsChecked);
+                while (result.EndsWith(currentChar))
+                {
+                    currentChar = generateCharacter(lettersChecked, digitsChecked, symbolsChecked);
+                }
+                result = result + currentChar;
+                //Multi=threaded call on the update for progressbar
+                if (progressBar1.InvokeRequired)
+                {
+                    progressBar1.Invoke(
+                       new ThreadStart(delegate
+                     {
+                         progressBar1.Value = charIndex * 100 / passLength;
+                     }));
+                }
+                else
+                { progressBar1.Value = charIndex * 100 / passLength; }
+
+            }
+
+
+            if (progressBar1.InvokeRequired)
+            {
+                progressBar1.Invoke(
+                   new ThreadStart(delegate
+                   {
+                       progressBar1.Value = 0;
+                   }));
+            }
+            else
+                progressBar1.Value = 0;
+
+            return result;
+        });
+
+        }
+
 
         private void button1_Click(object sender, EventArgs e)
         {
@@ -162,14 +200,9 @@ namespace PassWordGenerator
             }
         }
 
-        private void inputLengthValue_TextChanged(object sender, EventArgs e)
-        {
-
-        }
-
         private void button2_Click(object sender, EventArgs e)
         {
-            if(GeneratedPassword.Text.Length > 0)
+            if (GeneratedPassword.Text.Length > 0)
                 Clipboard.SetText(GeneratedPassword.Text);
         }
     }

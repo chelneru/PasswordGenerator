@@ -84,7 +84,6 @@
             this.inputLengthValue.Size = new System.Drawing.Size(100, 20);
             this.inputLengthValue.TabIndex = 7;
             this.inputLengthValue.Visible = false;
-            this.inputLengthValue.TextChanged += new System.EventHandler(this.inputLengthValue_TextChanged);
             // 
             // lengthError
             // 
