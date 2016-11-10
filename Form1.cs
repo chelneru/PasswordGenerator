@@ -1,7 +1,4 @@
-﻿///TODO :
-///-Make the GeneratingPassword method multi-threaded;
-///-Fix Controls behavior when the Window is resized;
-
+﻿
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -9,6 +6,7 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Text;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Threading;
@@ -27,9 +25,45 @@ namespace PassWordGenerator
         private void Form1_Load(object sender, EventArgs e)
         {
             advancedOptionsActivated = false;
+            fileGenerate.Visible = false;
+            //showAdvOp.Location = new Point(this.Size.Width / 2-150 , this.Size.Height / 2-110);
         }
 
+        protected virtual bool IsFileLocked(string path)
+        {
+            FileInfo file = new FileInfo(path);
+            FileStream stream = null;
 
+            try
+            {
+                if (file.IsReadOnly) return true;
+                stream = file.Open(FileMode.Open, FileAccess.Read, FileShare.None);
+
+            }
+            catch (IOException)
+            {
+                //the file is unavailable because it is:
+                //still being written to
+                //or being processed by another thread
+                //or does not exist (has already been processed)
+                return true;
+            }
+            finally
+            {
+                if (stream != null)
+                    stream.Close();
+            }
+
+            //file is not locked
+            return false;
+        }
+        void defaultSettings()
+        {
+            this.checkedListBox1.SetItemChecked(0, true);
+            this.checkedListBox1.SetItemChecked(1, true);
+            this.checkedListBox1.SetItemChecked(2, false);
+            this.inputLengthValue.Text = "10";
+        }
         private bool IsNumeric(string input)
         {
             int test;
@@ -69,13 +103,35 @@ namespace PassWordGenerator
             else return "0"; //this should never happen
 
         }
-
-        private int passwordValidity()
+        private int validateFileRequirements()
         {
-            string inputPasswordLength = this.inputLengthValue.Text.ToString().Trim();
+            int numberOfPasswords = this.lengthValidity(this.inputNumberPasswords.Text);
+            if (numberOfPasswords <= 0) countError.Visible = true;
+            else countError.Visible = false;
 
-            if (!IsNumeric(inputPasswordLength)) { lengthError.Visible = true; return 0; }
-            else if (Convert.ToInt32(inputPasswordLength) <= 0 || Convert.ToInt32(inputPasswordLength) > GeneratedPassword.MaxLength)
+            int passLength = this.lengthValidity(this.inputLengthValue.Text);
+            if (passLength <= 0) lengthError.Visible = true;
+            else
+            {
+                lengthError.Visible = false;
+                checkedListBox1.Enabled = false;
+            }
+            if (outputFolder.SelectedPath.Length == 0) fileError.Visible = true;
+            else fileError.Visible = false;
+            if (numberOfPasswords > 0 && passLength > 0 && outputFolder.SelectedPath.Length > 0)
+            {
+
+                return numberOfPasswords;
+            }
+            return 0;
+
+        }
+        private int lengthValidity(string inputValue)
+        {
+            inputValue = inputValue.Trim();
+
+            if (!IsNumeric(inputValue)) { lengthError.Visible = true; return 0; }
+            else if (Convert.ToInt32(inputValue) <= 0 || Convert.ToInt32(inputValue) > GeneratedPassword.MaxLength)
             {
                 lengthError.Visible = true;
                 charTypeError.Visible = false;
@@ -89,7 +145,7 @@ namespace PassWordGenerator
                 else digitsChecked = false;
                 if (checkedListBox1.GetItemChecked(2) == true) symbolsChecked = true;
                 else symbolsChecked = false;
-                int ValidPasswordLength = Convert.ToInt32(inputPasswordLength);
+                int ValidPasswordLength = Convert.ToInt32(inputValue);
                 if (checkedListBox1.CheckedItems.Count == 0)
                 {
                     lengthError.Visible = false;
@@ -100,28 +156,75 @@ namespace PassWordGenerator
             }
         }
         private async void Generate_Click(object sender, EventArgs e)
-        {   
-            if (this.advancedOptionsActivated == false)
+        {
+            Task<string> task;
+            if (this.advancedOptionsActivated == false) defaultSettings();
+
+            int passLength = this.lengthValidity(this.inputLengthValue.Text);
+            string fileOutput = "Generated Passwords" + Environment.NewLine;
+            if (fileGenerate.Checked == true)
             {
-                this.checkedListBox1.SetItemChecked(0, true);
-                this.checkedListBox1.SetItemChecked(1, true);
-                this.checkedListBox1.SetItemChecked(2, false);
-                this.inputLengthValue.Text = "10";
+                if (validateFileRequirements() > 0)
+                {
+                    int countPasswords = validateFileRequirements();
+                    checkedListBox1.Enabled = false;
+                    Generate.Enabled = false;
+                    int iterator = 1;
+                    task = GeneratingPassword(passLength);
+                    while (iterator <= countPasswords)
+                    {
+                        label2.Text = iterator.ToString() + "/" + countPasswords.ToString() + " Completed";
+                        fileOutput = fileOutput + "\n" + iterator.ToString() + ". ";
+                        task = GeneratingPassword(passLength);
+                        fileOutput = fileOutput + await GeneratingPassword(passLength) + Environment.NewLine;
+                        iterator++;
+                    }
+
+                    if (task.IsCompleted)
+                    {
+                        checkedListBox1.Enabled = true;
+                        Generate.Enabled = true;
+                        label2.Text = "";
+                        string path = outputFolder.SelectedPath + "\\Passwords.txt";
+                        if (!File.Exists(path))
+                        {
+                            File.Create(path);
+                            TextWriter output = new StreamWriter(path);
+                            output.WriteLine(fileOutput);
+                            output.Close();
+                        }
+                        else if (File.Exists(path))
+                        {
+
+                            if (IsFileLocked(path)) MessageBox.Show("Unable to write the passwords.File is either read-only or used by another process");
+                            else
+                            {
+                                TextWriter output = new StreamWriter(path);
+                                output.WriteLine(fileOutput);
+                                output.Close();
+                            }
+                        }
+                    }
+
+                }
             }
-            int passLength = this.passwordValidity();
-            if (passLength > 0)
+            else
             {
+                passLength = this.lengthValidity(this.inputLengthValue.Text);
+                if (passLength > 0)
+                {
 
-                this.GeneratedPassword.Text = "";
-                this.charTypeError.Visible = false;
-                this.lengthError.Visible = false;
-                checkedListBox1.Enabled = false;
-                Generate.Enabled = false;
-                Task<string> task = GeneratingPassword(passLength);
+                    this.GeneratedPassword.Text = "";
+                    this.charTypeError.Visible = false;
+                    this.lengthError.Visible = false;
+                    checkedListBox1.Enabled = false;
+                    Generate.Enabled = false;
+                    task = GeneratingPassword(passLength);
 
-                this.GeneratedPassword.Text = await task;
-                if (task.IsCompleted) { checkedListBox1.Enabled = true; Generate.Enabled = true; }
+                    this.GeneratedPassword.Text = await task;
+                    if (task.IsCompleted) { checkedListBox1.Enabled = true; Generate.Enabled = true; }
 
+                }
             }
         }
 
@@ -178,13 +281,13 @@ namespace PassWordGenerator
                 this.lengthLabel.Visible = true;
                 this.inputLengthValue.Text = "";
                 this.inputLengthValue.Visible = true;
-
                 this.checkedListBox1.SetItemChecked(0, false);
                 this.checkedListBox1.SetItemChecked(1, false);
                 this.checkedListBox1.Visible = true;
-
+                this.fileGenerate.Visible = true;
+                
                 this.progressBar1.Visible = true;
-                this.button1.Text = "Hide Advanced Options";
+                this.showAdvOp.Text = "Hide Advanced Options";
             }
             else
             {
@@ -195,8 +298,12 @@ namespace PassWordGenerator
                 progressBar1.Visible = false;
                 this.lengthError.Visible = false;
                 this.charTypeError.Visible = false;
+                this.fileGenerate.Visible = false;
+                fileGenerate.Checked = false;
+                numberPasswordsLabel.Visible = false;
+                inputNumberPasswords.Visible = false;
 
-                this.button1.Text = "Show Advanced Options";
+                this.showAdvOp.Text = "Show Advanced Options";
             }
         }
 
@@ -205,5 +312,33 @@ namespace PassWordGenerator
             if (GeneratedPassword.Text.Length > 0)
                 Clipboard.SetText(GeneratedPassword.Text);
         }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            outputFolder.ShowDialog();
+            label1.Text = outputFolder.SelectedPath;
+
+
+        }
+
+
+        private void fileGenerate_CheckedChanged(object sender, EventArgs e)
+        {
+            if (fileGenerate.Checked == true)
+            {
+                inputFile.Visible = true;
+                inputNumberPasswords.Visible = true;
+                numberPasswordsLabel.Visible = true;
+                label1.Visible = true;
+            }
+            else
+            {
+                inputFile.Visible = false;
+                inputNumberPasswords.Visible = false;
+                numberPasswordsLabel.Visible = false;
+                label1.Visible = false;
+            }
+        }
+
     }
 }
