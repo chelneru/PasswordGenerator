@@ -9,12 +9,13 @@ It has the options to choose the length of the password and also if it should co
 
 
 
-The controls don't behave very nice in some cases of window resizing.
+The program will crash if there is no "Passwords.txt" file in the selected folder.
 
 
 
 
 
 #TODO:
-
+-Fix the positions of the buttons
+-Restructure the code.
 -Use the RNGCryptoServiceProvider class to generate the password
